@@ -18,7 +18,31 @@ export interface SentenceProgress {
   status: 'new' | 'practiced' | 'done';
 }
 
-export type ScreenType = 'start' | 'list' | 'practice' | 'edit' | 'finish' | 'auth';
+export type ScreenType = 'start' | 'list' | 'practice' | 'edit' | 'finish' | 'auth' | 'summary';
+
+export interface UserActivityLog {
+  id: string;
+  user_id: string;
+  sentence_id: number;
+  activity_type: 'listen' | 'shadowing' | 'self_check' | 'complete';
+  listen_count: number;
+  shadowing_count: number;
+  speed_check: number | null;
+  stress_check: number | null;
+  intonation_check: number | null;
+  status: string;
+  created_at: string;
+}
+
+export interface UserStudySummary {
+  user_id: string;
+  total_listen_count: number;
+  total_shadowing_count: number;
+  completed_sentences: number;
+  total_sentences: number;
+  progress_percent: number;
+  last_studied_at: string;
+}
 
 export type StepType = 1 | 2 | 3 | 4;
 

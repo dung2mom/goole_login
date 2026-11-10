@@ -8,6 +8,7 @@ interface StartScreenProps {
   onStartPractice: () => void;
   onGoToEdit: () => void;
   onLoadSamples: () => void;
+  onGoToSummary?: () => void;
   onOpenLogin?: () => void;
 }
 
@@ -16,6 +17,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
   onStartPractice,
   onGoToEdit,
   onLoadSamples,
+  onGoToSummary,
 }) => {
   return (
     <div className="flex flex-col gap-5 pb-8 animate-fadeIn">
@@ -134,9 +136,19 @@ export const StartScreen: React.FC<StartScreenProps> = ({
           <span className="text-[11px] font-normal opacity-90">연습 시작</span>
         </button>
 
+        {onGoToSummary && (
+          <button
+            onClick={onGoToSummary}
+            className="w-full min-h-[46px] rounded-xl flex items-center justify-center gap-1.5 px-4 py-2 bg-white hover:bg-emerald-50/60 text-emerald-800 text-xs font-semibold border border-emerald-200/80 transition-colors shadow-2xs cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4 text-emerald-600" />
+            <span>Study Summary / 나의 학습 활동 기록 요약</span>
+          </button>
+        )}
+
         <button
           onClick={onGoToEdit}
-          className="w-full min-h-[46px] rounded-xl flex items-center justify-center gap-1.5 px-4 py-2 text-stone-700 hover:text-stone-900 hover:bg-stone-100/70 text-xs font-semibold border border-stone-200 transition-colors"
+          className="w-full min-h-[46px] rounded-xl flex items-center justify-center gap-1.5 px-4 py-2 text-stone-700 hover:text-stone-900 hover:bg-stone-100/70 text-xs font-semibold border border-stone-200 transition-colors cursor-pointer"
         >
           <Edit3 className="w-4 h-4 text-stone-500" />
           <span>Edit Sentences / 문장 편집</span>

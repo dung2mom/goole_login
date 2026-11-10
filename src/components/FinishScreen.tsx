@@ -10,6 +10,7 @@ interface FinishScreenProps {
   onPracticeSentence: (index: number) => void;
   onGoToStart: () => void;
   onGoToList: () => void;
+  onGoToSummary?: () => void;
 }
 
 export const FinishScreen: React.FC<FinishScreenProps> = ({
@@ -18,6 +19,7 @@ export const FinishScreen: React.FC<FinishScreenProps> = ({
   onPracticeSentence,
   onGoToStart,
   onGoToList,
+  onGoToSummary,
 }) => {
   // Fire celebratory confetti on mount
   useEffect(() => {
@@ -159,9 +161,19 @@ export const FinishScreen: React.FC<FinishScreenProps> = ({
 
       {/* Navigation Buttons */}
       <div className="flex flex-col gap-2.5">
+        {onGoToSummary && (
+          <button
+            onClick={onGoToSummary}
+            className="w-full min-h-[50px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+          >
+            <span>View Study Summary / 학습 기록 요약 보기</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        )}
+
         <button
           onClick={onGoToList}
-          className="w-full min-h-[50px] rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-xs transition-colors"
+          className="w-full min-h-[46px] rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
         >
           <span>View Sentence List / 문장 목록 전체 보기</span>
           <ArrowRight className="w-4 h-4" />
@@ -169,7 +181,7 @@ export const FinishScreen: React.FC<FinishScreenProps> = ({
 
         <button
           onClick={onGoToStart}
-          className="w-full min-h-[46px] rounded-xl bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 font-semibold text-xs flex items-center justify-center gap-2 transition-colors"
+          className="w-full min-h-[46px] rounded-xl bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 font-semibold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
         >
           <RotateCcw className="w-3.5 h-3.5 text-stone-500" />
           <span>Return to Start / 처음 화면으로</span>

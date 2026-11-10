@@ -14,12 +14,14 @@ import { SentenceListScreen } from './components/SentenceListScreen';
 import { ShadowingScreen } from './components/ShadowingScreen';
 import { EditSentencesScreen } from './components/EditSentencesScreen';
 import { FinishScreen } from './components/FinishScreen';
+import { StudySummaryScreen } from './components/StudySummaryScreen';
 import { LoginModal } from './components/LoginModal';
 import { AuthScreen } from './components/AuthScreen';
 import { UserProfilePopover } from './components/UserProfilePopover';
 import { useAuth } from './context/AuthContext';
 import { supabase } from './lib/supabase';
-import { LogIn } from 'lucide-react';
+import { recordUserActivity } from './services/activityService';
+import { LogIn, BarChart3 } from 'lucide-react';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenType>(() => {
@@ -151,14 +153,30 @@ export default function App() {
     saveStoredSentences(newSentences);
   };
 
-  // Sync progress to state and localStorage
-  const handleUpdateProgress = (updatedProgress: SentenceProgress) => {
+  // Sync progress to state and localStorage, and persist to Supabase if logged in
+  const handleUpdateProgress = (
+    updatedProgress: SentenceProgress,
+    activityType: 'listen' | 'shadowing' | 'self_check' | 'complete' = 'listen'
+  ) => {
     setProgressMap((prev) => {
       const next = {
         ...prev,
         [updatedProgress.id]: updatedProgress,
       };
       saveStoredProgress(next);
+
+      // Record activity to Supabase with real-time timestamp when authenticated
+      if (user?.id) {
+        recordUserActivity(
+          user.id,
+          updatedProgress.id,
+          activityType,
+          updatedProgress,
+          next,
+          sentences
+        );
+      }
+
       return next;
     });
   };
@@ -266,6 +284,16 @@ export default function App() {
                 List
               </button>
             )}
+            {currentScreen !== 'summary' && (
+              <button
+                onClick={() => setCurrentScreen('summary')}
+                className="px-2 py-1 rounded-md text-emerald-800 hover:bg-emerald-50 font-semibold transition-colors flex items-center gap-1"
+                title="나의 학습 기록 요약"
+              >
+                <BarChart3 className="w-3 h-3 text-emerald-600" />
+                <span>요약</span>
+              </button>
+            )}
             {currentScreen !== 'edit' && (
               <button
                 onClick={() => setCurrentScreen('edit')}
@@ -304,6 +332,7 @@ export default function App() {
               onStartPractice={handleStartPractice}
               onGoToEdit={() => setCurrentScreen('edit')}
               onLoadSamples={handleLoadSamples}
+              onGoToSummary={() => setCurrentScreen('summary')}
               onOpenLogin={() => setIsLoginModalOpen(true)}
             />
           )}
@@ -359,6 +388,21 @@ export default function App() {
               }}
               onGoToStart={() => setCurrentScreen('start')}
               onGoToList={() => setCurrentScreen('list')}
+              onGoToSummary={() => setCurrentScreen('summary')}
+            />
+          )}
+
+          {currentScreen === 'summary' && (
+            <StudySummaryScreen
+              sentences={sentences}
+              progressMap={progressMap}
+              onGoBack={() => setCurrentScreen('start')}
+              onPracticeSentence={(idx) => {
+                setActiveSentenceIndex(idx);
+                setCurrentScreen('practice');
+              }}
+              onGoToList={() => setCurrentScreen('list')}
+              onOpenLogin={() => setIsLoginModalOpen(true)}
             />
           )}
 

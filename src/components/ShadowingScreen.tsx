@@ -25,7 +25,10 @@ interface ShadowingScreenProps {
   totalSentences: number;
   progress: SentenceProgress;
   playerRef: React.RefObject<YouTubePlayerHandle | null>;
-  onUpdateProgress: (updated: SentenceProgress) => void;
+  onUpdateProgress: (
+    updated: SentenceProgress,
+    activityType?: 'listen' | 'shadowing' | 'self_check' | 'complete'
+  ) => void;
   onNext: () => void;
   onPrev: () => void;
   onGoToList: () => void;
@@ -143,10 +146,13 @@ export const ShadowingScreen: React.FC<ShadowingScreenProps> = ({
         });
 
         // Increment play count
-        onUpdateProgress({
-          ...progress,
-          plays: (progress.plays || 0) + 1,
-        });
+        onUpdateProgress(
+          {
+            ...progress,
+            plays: (progress.plays || 0) + 1,
+          },
+          'listen'
+        );
       }
     } else {
       // Step 2 (읽기) or Step 4 (확인): pause/stop video so learner can read / record
@@ -179,10 +185,13 @@ export const ShadowingScreen: React.FC<ShadowingScreenProps> = ({
     });
 
     // Increment play count
-    onUpdateProgress({
-      ...progress,
-      plays: (progress.plays || 0) + 1,
-    });
+    onUpdateProgress(
+      {
+        ...progress,
+        plays: (progress.plays || 0) + 1,
+      },
+      'listen'
+    );
   }, [sentence.start, sentence.end, loopEnabled, playbackRate, isPlayingClip, progress, onUpdateProgress, playerRef, stopVoice]);
 
   // Toggle loop and notify player immediately
@@ -215,11 +224,14 @@ export const ShadowingScreen: React.FC<ShadowingScreenProps> = ({
 
       // Mark status: "practiced" after 1 recording, "done" if recorded in Step 4 (확인)
       const newStatus = activeStep === 4 ? 'done' : progress.status === 'done' ? 'done' : 'practiced';
-      onUpdateProgress({
-        ...progress,
-        recordings: (progress.recordings || 0) + 1,
-        status: newStatus,
-      });
+      onUpdateProgress(
+        {
+          ...progress,
+          recordings: (progress.recordings || 0) + 1,
+          status: newStatus,
+        },
+        'shadowing'
+      );
       return;
     }
 
@@ -245,10 +257,13 @@ export const ShadowingScreen: React.FC<ShadowingScreenProps> = ({
     const currentCheck = [...progress.selfCheck] as [SelfCheckValue, SelfCheckValue, SelfCheckValue];
     currentCheck[questionIndex] = rating;
 
-    onUpdateProgress({
-      ...progress,
-      selfCheck: currentCheck,
-    });
+    onUpdateProgress(
+      {
+        ...progress,
+        selfCheck: currentCheck,
+      },
+      'self_check'
+    );
   };
 
   // Web Speech API Word Check
