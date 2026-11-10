@@ -58,7 +58,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
-    // 1. Initial check for existing session
+    // 1. Initial check for existing session or hash fragment tokens
+    if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+      if (accessToken && refreshToken) {
+        supabase.auth
+          .setSession({ access_token: accessToken, refresh_token: refreshToken })
+          .then(({ data }) => {
+            if (data?.session?.user && mounted) {
+              setSession(data.session);
+              setUser(data.session.user);
+              upsertUserInDatabase(data.session.user);
+              window.history.replaceState(null, '', window.location.pathname);
+            }
+          })
+          .catch((err) => console.warn('Failed to set session from hash:', err));
+      }
+    }
+
     supabase.auth
       .getSession()
       .then(({ data: { session: currentSession } }) => {
