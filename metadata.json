@@ -1,0 +1,6 @@
+{
+  "name": "Scene Shadow: Notting Hill",
+  "description": "Educational English shadowing app practicing the bookshop scene from Notting Hill (1999) with YouTube IFrame Player, slow playback, voice recording, and self-check.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
