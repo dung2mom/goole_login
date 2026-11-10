@@ -3,6 +3,8 @@
 -- Follows AGENTS.md guidelines:
 -- 1. Explicit GRANT permissions to anon and authenticated roles
 -- 2. Row Level Security (RLS) enabled with appropriate policies
+-- 3. Automatic Trigger on auth.users for seamless sync
+-- 4. Immediate backfill for existing auth users
 -- ==============================================================================
 
 -- 1. Create public.users table linked to auth.users
@@ -25,14 +27,16 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 
 -- 4. RLS Policies
--- Allow public read access to basic user profiles
+-- Allow public read access to user profiles
+DROP POLICY IF EXISTS "Allow public read access for user profiles" ON public.users;
 CREATE POLICY "Allow public read access for user profiles"
   ON public.users
   FOR SELECT
   TO anon, authenticated
   USING (true);
 
--- Allow authenticated users to manage their own user record
+-- Allow authenticated users to manage their own record
+DROP POLICY IF EXISTS "Allow users to insert or update their own record" ON public.users;
 CREATE POLICY "Allow users to insert or update their own record"
   ON public.users
   FOR ALL
@@ -53,7 +57,10 @@ BEGIN
       NEW.raw_user_meta_data->>'name',
       split_part(NEW.email, '@', 1)
     ),
-    NEW.raw_user_meta_data->>'avatar_url',
+    COALESCE(
+      NEW.raw_user_meta_data->>'avatar_url',
+      NEW.raw_user_meta_data->>'picture'
+    ),
     COALESCE(NEW.raw_app_meta_data->>'provider', 'google'),
     now()
   )
@@ -65,10 +72,34 @@ BEGIN
     updated_at = now();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Trigger on auth.users table
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT OR UPDATE ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 6. Immediate backfill: Sync any existing users from auth.users to public.users
+INSERT INTO public.users (id, email, full_name, avatar_url, provider, updated_at)
+SELECT
+  id,
+  email,
+  COALESCE(
+    raw_user_meta_data->>'full_name',
+    raw_user_meta_data->>'name',
+    split_part(email, '@', 1)
+  ),
+  COALESCE(
+    raw_user_meta_data->>'avatar_url',
+    raw_user_meta_data->>'picture'
+  ),
+  COALESCE(raw_app_meta_data->>'provider', 'google'),
+  now()
+FROM auth.users
+ON CONFLICT (id) DO UPDATE SET
+  email = EXCLUDED.email,
+  full_name = EXCLUDED.full_name,
+  avatar_url = EXCLUDED.avatar_url,
+  provider = EXCLUDED.provider,
+  updated_at = now();

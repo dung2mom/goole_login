@@ -40,7 +40,10 @@ async function upsertUserInDatabase(user: User): Promise<void> {
       user.email?.split('@')[0] ||
       'Learner';
 
-    const avatarUrl = user.user_metadata?.avatar_url || null;
+    const avatarUrl =
+      user.user_metadata?.avatar_url ||
+      user.user_metadata?.picture ||
+      null;
     const provider = user.app_metadata?.provider || 'google';
 
     const { error } = await supabase.from('users').upsert(
@@ -57,6 +60,8 @@ async function upsertUserInDatabase(user: User): Promise<void> {
 
     if (error) {
       console.warn('Sync to public.users table (info/table setup required):', error.message);
+    } else {
+      console.log('[DEBUG] public.users table upsert successful for user:', user.email);
     }
   } catch (err) {
     console.warn('Error during user database sync:', err);
