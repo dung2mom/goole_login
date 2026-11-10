@@ -32,7 +32,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       if (error) {
         throw error;
       }
-      setSuccessMsg('Google 로그인 창이 열렸습니다. 팝업에서 로그인을 완료해 주세요.');
     } catch (err: any) {
       console.warn('Google login error:', err);
       setErrorMsg(
