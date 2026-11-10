@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, LogOut, CheckCircle2, AlertCircle, Sparkles, ShieldCheck } from 'lucide-react';
+import { X, LogOut, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface LoginModalProps {
@@ -152,19 +152,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           </div>
         ) : (
           /* Google Sign In Only (No separate signup, perfectly aligned with user instructions) */
-          <div className="flex flex-col gap-4">
-            {/* Feature highlights */}
-            <div className="bg-white/80 rounded-2xl p-3.5 border border-stone-200/70 space-y-2">
-              <div className="flex items-center gap-2 text-xs text-stone-700">
-                <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <span>나만의 쉐도잉 진도와 점검 기록 자동 저장</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-stone-700">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                <span>비밀번호 입력 없는 1초 간편 로그인</span>
-              </div>
-            </div>
-
+          <div className="flex flex-col gap-3.5">
             {/* Google Login Button */}
             <button
               type="button"
