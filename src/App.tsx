@@ -18,6 +18,7 @@ import { LoginModal } from './components/LoginModal';
 import { AuthScreen } from './components/AuthScreen';
 import { UserProfilePopover } from './components/UserProfilePopover';
 import { useAuth } from './context/AuthContext';
+import { supabase } from './lib/supabase';
 import { LogIn } from 'lucide-react';
 
 export default function App() {
@@ -36,6 +37,7 @@ export default function App() {
   // Global Auth via AuthContext
   const { user } = useAuth();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [showReturnButton, setShowReturnButton] = useState(false);
 
   // Automatically redirect to main page ('start') when user signs in
   useEffect(() => {
@@ -47,23 +49,97 @@ export default function App() {
     }
   }, [user, currentScreen]);
 
-  // Handle OAuth popup window callback: notify parent window and close popup
+  // Handle OAuth popup window callback (Requirements 1.a, 1.b, 1.c, 3, 6)
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.opener) {
-      const hasAuthParams =
-        window.location.hash.includes('access_token') ||
-        window.location.search.includes('code');
+    if (typeof window === 'undefined') return;
 
-      if (hasAuthParams) {
-        const timer = setTimeout(() => {
-          try {
-            window.opener.postMessage({ type: 'SUPABASE_AUTH_SUCCESS' }, '*');
-          } catch (_) {}
-          window.close();
-        }, 1000);
-        return () => clearTimeout(timer);
+    const isPopup = Boolean(window.opener) || window.name === 'google_oauth_popup';
+    const hasAuthParams =
+      window.location.hash.includes('access_token') ||
+      window.location.search.includes('code');
+
+    if (!hasAuthParams) return;
+
+    const handlePopupAuth = async () => {
+      console.log('[DEBUG] Popup: OAuth callback detected with auth parameters');
+
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+      const searchParams = new URLSearchParams(window.location.search);
+      const code = searchParams.get('code');
+
+      // 1.a) Set session and wait until confirmed before closing
+      let confirmedSession = null;
+      if (accessToken && refreshToken) {
+        console.log('[DEBUG] Popup: establishing session via setSession with hash tokens...');
+        const { data, error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (error) {
+          console.error('[DEBUG] Popup: setSession error:', error);
+        } else {
+          confirmedSession = data.session;
+        }
+      } else if (code) {
+        console.log('[DEBUG] Popup: exchanging authorization code for session...');
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) {
+          console.error('[DEBUG] Popup: exchangeCode error:', error);
+        } else {
+          confirmedSession = data.session;
+        }
       }
-    }
+
+      if (!confirmedSession) {
+        const { data } = await supabase.auth.getSession();
+        confirmedSession = data.session;
+      }
+
+      // 1.a) Verify session confirmed
+      if (confirmedSession?.user) {
+        console.log('[DEBUG] Popup: session confirmed:', confirmedSession.user.email);
+      } else {
+        console.warn('[DEBUG] Popup: session confirmation incomplete');
+      }
+
+      // 1.b) 세션이 확정된 것을 확인한 뒤에만, 원래 창으로 전달한다
+      if (window.opener) {
+        const tokenToSend = accessToken || confirmedSession?.access_token;
+        const refreshToSend = refreshToken || confirmedSession?.refresh_token;
+
+        if (tokenToSend && refreshToSend) {
+          try {
+            window.opener.postMessage(
+              {
+                type: 'SUPABASE_AUTH',
+                access_token: tokenToSend,
+                refresh_token: refreshToSend,
+              },
+              window.location.origin
+            );
+            console.log('[DEBUG] Popup: postMessage sent to opener with origin:', window.location.origin);
+          } catch (postErr) {
+            console.error('[DEBUG] Popup: postMessage error:', postErr);
+          }
+
+          // 1.c) 전달 후 300ms 뒤에 window.close() 한다. 세션 확정 전에는 절대 닫지 마.
+          setTimeout(() => {
+            console.log('[DEBUG] Popup: closing popup window after 300ms');
+            window.close();
+          }, 300);
+        } else {
+          console.warn('[DEBUG] Popup: tokens not available to post to opener');
+        }
+      } else if (isPopup) {
+        // 3. window.opener 가 null 이어서 전달이 불가능한 경우 대비: "앱으로 돌아가기" 버튼 표시
+        console.warn('[DEBUG] Popup: window.opener is null, displaying return button UI');
+        setShowReturnButton(true);
+      }
+    };
+
+    handlePopupAuth();
   }, []);
 
   // Shared ref for YouTube player instance
@@ -300,6 +376,37 @@ export default function App() {
           currentUser={user}
           onClose={() => setIsLoginModalOpen(false)}
         />
+
+        {/* Requirement 3: Return to App button when opener is null in popup */}
+        {showReturnButton && (
+          <div className="fixed inset-0 z-50 bg-[#FAF7F2] flex flex-col items-center justify-center p-6 text-center animate-fadeIn">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-700 text-white flex items-center justify-center font-bold text-base shadow-sm mb-3">
+              SS
+            </div>
+            <h2 className="text-xl font-bold text-stone-900 font-display">로그인이 완료되었습니다</h2>
+            <p className="text-xs text-stone-600 mt-2 max-w-xs leading-relaxed">
+              Google 인증이 성공적으로 완료되었습니다. 원래 창과의 연결이 분리되어 팝업이 자동으로 닫히지 않았습니다. 아래 버튼을 눌러 학습 화면으로 이동하세요.
+            </p>
+            <div className="flex flex-col gap-2 w-full max-w-xs mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href = window.location.origin;
+                }}
+                className="w-full min-h-[46px] rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              >
+                앱으로 돌아가기
+              </button>
+              <button
+                type="button"
+                onClick={() => window.close()}
+                className="w-full min-h-[40px] rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                이 창 닫기
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

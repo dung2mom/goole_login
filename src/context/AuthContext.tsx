@@ -15,6 +15,20 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 /**
+ * Helper to get safe redirect origin (never localhost)
+ */
+function getSafeRedirectOrigin(): string {
+  if (typeof window === 'undefined') {
+    return 'https://ais-dev-3idiba3bv6zsqbvyv6ttpa-271096324703.asia-northeast1.run.app';
+  }
+  let origin = window.location.origin;
+  if (!origin || origin.includes('localhost') || origin === 'null') {
+    origin = 'https://ais-dev-3idiba3bv6zsqbvyv6ttpa-271096324703.asia-northeast1.run.app';
+  }
+  return origin;
+}
+
+/**
  * Automatically saves/syncs the authenticated user to the public.users database table.
  * Adheres to AGENTS.md database conventions.
  */
@@ -58,26 +72,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
-    // 1. Initial check for existing session or hash fragment tokens
-    if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      const accessToken = hashParams.get('access_token');
-      const refreshToken = hashParams.get('refresh_token');
-      if (accessToken && refreshToken) {
-        supabase.auth
-          .setSession({ access_token: accessToken, refresh_token: refreshToken })
-          .then(({ data }) => {
-            if (data?.session?.user && mounted) {
+    // 1. Check for URL tokens when returning from top-level full-page redirect (detectSessionInUrl)
+    const detectSessionInUrl = async () => {
+      if (typeof window === 'undefined') return;
+
+      const hasHash = window.location.hash.includes('access_token');
+      const hasCode = window.location.search.includes('code');
+
+      if (hasHash || hasCode) {
+        console.log('[DEBUG] Main: detectSessionInUrl - detected auth parameters in URL');
+        if (hasHash) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          const accessToken = hashParams.get('access_token');
+          const refreshToken = hashParams.get('refresh_token');
+
+          if (accessToken && refreshToken) {
+            console.log('[DEBUG] Main: attempting setSession from URL hash...');
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+
+            if (error) {
+              console.error('[DEBUG] Main: setSession result error from detectSessionInUrl:', error);
+            } else if (data?.session?.user && mounted) {
+              console.log('[DEBUG] Main: setSession result success from detectSessionInUrl, user:', data.session.user.email);
               setSession(data.session);
               setUser(data.session.user);
               upsertUserInDatabase(data.session.user);
               window.history.replaceState(null, '', window.location.pathname);
             }
-          })
-          .catch((err) => console.warn('Failed to set session from hash:', err));
+          }
+        }
       }
-    }
+    };
 
+    detectSessionInUrl();
+
+    // 2. Initial check for existing Supabase session
     supabase.auth
       .getSession()
       .then(({ data: { session: currentSession } }) => {
@@ -95,7 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (mounted) setLoading(false);
       });
 
-    // 2. Real-time auth subscription
+    // 3. Real-time auth subscription
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
@@ -109,20 +141,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    // 3. Listen for postMessage from popup window
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'SUPABASE_AUTH_SUCCESS') {
-        supabase.auth.getSession().then(({ data: { session: postSession } }) => {
-          if (postSession?.user && mounted) {
-            setUser(postSession.user);
-            setSession(postSession);
-            upsertUserInDatabase(postSession.user);
+    // 4. Message listener for popup window (Requirement 2.a, 2.b)
+    const handleMessage = async (event: MessageEvent) => {
+      // Validate origin strictly
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+
+      // Check message type
+      if (event.data?.type === 'SUPABASE_AUTH') {
+        console.log('[DEBUG] Main: message received from popup:', event.data);
+        const { access_token, refresh_token } = event.data;
+
+        if (access_token && refresh_token) {
+          try {
+            console.log('[DEBUG] Main: executing setSession with received tokens...');
+            const { data, error } = await supabase.auth.setSession({
+              access_token,
+              refresh_token,
+            });
+
+            if (error) {
+              console.error('[DEBUG] Main: setSession result error:', error);
+            } else {
+              console.log('[DEBUG] Main: setSession result success, user:', data.session?.user?.email);
+              if (data.session?.user && mounted) {
+                setUser(data.session.user);
+                setSession(data.session);
+                await upsertUserInDatabase(data.session.user);
+              }
+            }
+          } catch (setErr) {
+            console.error('[DEBUG] Main: setSession exception:', setErr);
           }
-        });
+        }
       }
     };
+
     window.addEventListener('message', handleMessage);
 
+    // 5. Cleanup listener on unmount (Requirement 2.c)
     return () => {
       mounted = false;
       subscription.unsubscribe();
@@ -130,16 +188,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // Google OAuth Login via Popup window (bypasses Google's x-frame-options: DENY in iframes)
+  // Google OAuth Login handler (handles both iframe/popup and direct/top-level redirect)
   const signInWithGoogle = useCallback(async () => {
     try {
-      // Avoid redirecting to localhost:3000 which causes ERR_CONNECTION_REFUSED in the browser.
-      // Use the provided AI Studio Cloud Run URL.
-      const redirectUrl =
-        typeof window !== 'undefined' && window.location.origin.includes('asia-northeast1.run.app')
-          ? `${window.location.origin}/`
-          : 'https://ais-dev-3idiba3bv6zsqbvyv6ttpa-271096324703.asia-northeast1.run.app/';
+      const isTopLevel = typeof window !== 'undefined' && window.self === window.top;
+      const origin = getSafeRedirectOrigin();
+      const redirectUrl = `${origin}/`;
 
+      // Requirement 4: If opened directly in a new tab/window (not in iframe), use full-page redirect
+      if (isTopLevel) {
+        console.log('[DEBUG] Main: running in top-level window (window.self === window.top). Using full-page redirect flow to:', redirectUrl);
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: false,
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'consent',
+            },
+          },
+        });
+
+        if (error) throw error;
+        return { error: null };
+      }
+
+      // If in iframe (AI Studio preview): use popup flow with skipBrowserRedirect: true
+      console.log('[DEBUG] Main: running inside iframe. Initiating popup OAuth with redirectUrl:', redirectUrl);
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -155,7 +231,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error;
       if (!data?.url) throw new Error('OAuth URL not returned by Supabase');
 
-      // Open the OAuth URL in a standalone popup window so it does not get blocked by Google iframe restriction
       const width = 500;
       const height = 650;
       const left =
@@ -178,20 +253,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         window.open(data.url, '_blank');
       }
 
-      // Monitor session change while popup is active
+      // Requirement 2.d: Secondary fallback - monitor if popup was closed, then call getSession()
       const pollTimer = window.setInterval(async () => {
         try {
-          const { data: sessionData } = await supabase.auth.getSession();
-          if (sessionData?.session?.user) {
+          if (authWindow && authWindow.closed) {
             window.clearInterval(pollTimer);
-            setUser(sessionData.session.user);
-            setSession(sessionData.session);
-            if (authWindow && !authWindow.closed) {
-              authWindow.close();
+            console.log('[DEBUG] Main: popup closed detected (popup.closed). Checking getSession()...');
+            const { data: sessionData } = await supabase.auth.getSession();
+            if (sessionData?.session?.user) {
+              console.log('[DEBUG] Main: setSession result recovered after popup close, user:', sessionData.session.user.email);
+              setUser(sessionData.session.user);
+              setSession(sessionData.session);
+              await upsertUserInDatabase(sessionData.session.user);
             }
           }
         } catch (_) {}
-      }, 1000);
+      }, 500);
 
       window.setTimeout(() => {
         window.clearInterval(pollTimer);
@@ -236,9 +313,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-/**
- * Custom hook for accessing authentication state and methods anywhere in the project.
- */
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (!context) {
