@@ -114,10 +114,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Google OAuth Login via Popup window (bypasses Google's x-frame-options: DENY in iframes)
   const signInWithGoogle = useCallback(async () => {
     try {
+      // Avoid redirecting to localhost:3000 which causes ERR_CONNECTION_REFUSED in the browser.
+      // Use the provided AI Studio Cloud Run URL.
       const redirectUrl =
-        typeof window !== 'undefined'
+        typeof window !== 'undefined' && window.location.origin.includes('asia-northeast1.run.app')
           ? `${window.location.origin}/`
-          : undefined;
+          : 'https://ais-dev-3idiba3bv6zsqbvyv6ttpa-271096324703.asia-northeast1.run.app/';
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
